@@ -19,6 +19,7 @@ import itertools
 import errno
 
 from subprocess import Popen, PIPE
+from pathlib import Path
 
 try:
     import pystache
@@ -1193,7 +1194,7 @@ class GitRepos(object):
                       key=lambda x: int(x.committer_date_timestamp))
 
     def log(self, includes=["HEAD", ], excludes=[], include_merge=True,
-            encoding=_preferred_encoding):
+            encoding=_preferred_encoding, path=None):
         """Reverse chronological list of git repository's commits
 
         Note: rev lists can be GitCommit instance list or identifier list.
@@ -1208,10 +1209,14 @@ class GitRepos(object):
                     refs[ref_type][idx] = self.commit(ref)
 
         ## --topo-order: don't mix commits from separate branches.
-        plog = Proc("git log --stdin -z --topo-order --pretty=format:%s %s --"
-                    % (GIT_FULL_FORMAT_STRING,
-                       '--no-merges' if not include_merge else ''),
-                    encoding=encoding)
+        plog = Proc(
+            "git log --stdin -z --topo-order --pretty=format:%s %s -- %s"
+            % (GIT_FULL_FORMAT_STRING,
+                '--no-merges' if not include_merge else '',
+                path or ''
+            ),
+            encoding=encoding
+        )
         for ref in refs["includes"]:
             plog.stdin.write("%s\n" % ref.sha1)
 
@@ -1513,7 +1518,7 @@ def versions_data_iter(repository, revlist=None,
                        subject_process=lambda x: x,
                        log_encoding=DEFAULT_GIT_LOG_ENCODING,
                        warn=warn,        ## Mostly used for test
-                       ):
+                       path=None):
     """Returns an iterator through versions data structures
 
     (see ``gitchangelog.rc.reference`` file for more info)
@@ -1528,6 +1533,7 @@ def versions_data_iter(repository, revlist=None,
     :param subject_process: text processing object to apply to subject
     :param log_encoding: the encoding used in git logs
     :param warn: callable to output warnings, mocked by tests
+    :param path: limit commits to those occurring under this path
 
     :returns: iterator of versions data_structures
 
@@ -1586,7 +1592,9 @@ def versions_data_iter(repository, revlist=None,
             includes=[min(tag, max_rev)],
             excludes=tags[idx + 1:] + excludes,
             include_merge=include_merge,
-            encoding=log_encoding)
+            encoding=log_encoding,
+            path=path
+        )
 
         for commit in commits:
             if any(re.search(pattern, commit.subject) is not None
@@ -1727,6 +1735,13 @@ def parse_cmd_line(usage, description, epilog, exname, version):
                         help="Enable debug mode (show full tracebacks).",
                         action="store_true", dest="debug")
     parser.add_argument('revlist', nargs='*', action="store", default=[])
+    parser.add_argument(
+        '-p', '--path',
+        help=(
+            "Limit commits to those occurring under this path. "
+            "If not speficied, all repository commits are included"
+        )
+    )
 
     ## Remove "show" as first argument for compatibility reason.
 
@@ -1918,10 +1933,19 @@ def main():
 
     gc_rc = normpath(gc_rc, cwd=repository.toplevel) if gc_rc else None
 
+    path_rc = (
+        os.path.join(
+            normpath(opts.path, cwd=repository.toplevel),
+            ".%s.rc" % basename
+        )
+        if opts.path is not None else None
+    )
+
     ## config file lookup resolution
     for enforce_file_existence, fun in [
         (True, lambda: os.environ.get('GITCHANGELOG_CONFIG_FILENAME')),
         (True, lambda: gc_rc),
+        (False, lambda: path_rc),
         (False,
              lambda: (os.path.join(repository.toplevel, ".%s.rc" % basename))
                       if not repository.bare else None)]:
@@ -1964,6 +1988,7 @@ def main():
             body_process=config.get("body_process", noop),
             subject_process=config.get("subject_process", noop),
             log_encoding=log_encoding,
+            path=opts.path,
         )
 
         if isinstance(content, basestring):

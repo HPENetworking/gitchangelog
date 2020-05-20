@@ -201,6 +201,8 @@ file, then chances are that ``gitchangelog`` can't access these
 defaults values. This is not a problem as long as you provided all the
 required values in your config file.
 
+Configuration File Path Resolution
+----------------------------------
 The recommended location for ``gitchangelog`` config file is the root
 of the current git repository with the name ``.gitchangelog.rc``.
 However you could put it elsewhere, and here are the locations checked
@@ -210,6 +212,10 @@ However you could put it elsewhere, and here are the locations checked
   ``GITCHANGELOG_CONFIG_FILENAME``
 - in the path stored in git config's entry ``gitchangelog.rc-path`` (which
   could be stored in system location or per repository)
+- in a subpackage located in a subpath relative to the root repo directory.
+  This allows to use individual configuration files for any subpackage.
+  However this only works when the ``--path`` command line options is provided.
+  See `Multi-package Repository`_ for more details.
 - (RECOMMENDED) in the root of the current git repository with the name
   ``.gitchangelog.rc``
 
@@ -566,6 +572,32 @@ As a second example, here is the same recipe for mustache markdown format::
     ]
 
     publish = FileRegexSubst(OUTPUT_FILE, INSERT_POINT_REGEX, r"\1\o\n\g<tail>")
+
+Multi-package Repository
+------------------------
+Also known as mono repo. This consists in a repository that holds
+multiple subpackages or subjects. You can obtain the changelog for
+each subpackage separately by using the ``-p/--path`` command line option.
+
+For example, consider the following repository layout::
+
+    webapp_repo/
+    ├── .gitchangelog.rc
+    ├── backend/
+    |   └── .gitchangelog.rc
+    └── frontend
+
+In order to generate the git changelog for `backend` sub package you can use
+a command like the following::
+
+    gitchangelog --path backend/
+
+You can also customize the config options of each package invidually by
+including a ``.gitchangelog.rc` configuration file under each package.
+Notice this file has precedence over the root repository's config file,
+but can still be overriden by the ``GITCHANGELOG_CONFIG_FILENAME`` environment
+variable or  ``gitchangelog.rc-path`` git config entry.
+See `Configuration File Path Resolution`_ for details.
 
 
 Contributing
